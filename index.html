@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>Blue & Gold Heart</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: black;
+}
+
+canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let W;
+let H;
+let particles = [];
+
+let time = 0;
+
+
+// =====================================================
+// COLORS
+// =====================================================
+
+const BLUE = [
+    "#008cff",
+    "#00aaff",
+    "#00c8ff",
+    "#1877ff",
+    "#4169e1"
+];
+
+const GOLD = [
+    "#ffd000",
+    "#ffb700",
+    "#ffe066",
+    "#f5c400",
+    "#fff0a0"
+];
+
+
+// =====================================================
+// SETTINGS
+// =====================================================
+
+// More particles
+const OUTLINE_COUNT = 420;
+const INSIDE_COUNT = 520;
+
+// How long the heart takes to form
+const FORM_TIME = 180;
+
+// How long the completed heart stays
+const HOLD_TIME = 180;
+
+// How long it disappears
+const FADE_TIME = 100;
+
+// Total animation cycle
+const CYCLE_TIME =
+    FORM_TIME +
+    HOLD_TIME +
+    FADE_TIME;
+
+
+// =====================================================
+// RESIZE
+// =====================================================
+
+function resize() {
+
+    const dpr =
+        window.devicePixelRatio || 1;
+
+    W = window.innerWidth;
+    H = window.innerHeight;
+
+    canvas.width =
+        W * dpr;
+
+    canvas.height =
+        H * dpr;
+
+    canvas.style.width =
+        W + "px";
+
+    canvas.style.height =
+        H + "px";
+
+    ctx.setTransform(
+        dpr,
+        0,
+        0,
+        dpr,
+        0,
+        0
+    );
+
+    createHeart();
+}
+
+window.addEventListener(
+    "resize",
+    resize
+);
+
+
+// =====================================================
+// HEART EQUATION
+// =====================================================
+
+function heart(t) {
+
+    const x =
+        16 * Math.pow(
+            Math.sin(t),
+            3
+        );
+
+    const y =
+        13 * Math.cos(t)
+        - 5 * Math.cos(2 * t)
+        - 2 * Math.cos(3 * t)
+        - Math.cos(4 * t);
+
+    return {
+        x: x,
+        y: -y
+    };
+}
+
+
+// =====================================================
+// PARTICLE CLASS
+// =====================================================
+
+class Particle {
+
+    constructor(
+        targetX,
+        targetY,
+        delay,
+        size
+    ) {
+
+        this.targetX =
+            targetX;
+
+        this.targetY =
+            targetY;
+
+        // Start from the center
+        this.x =
+            W / 2;
+
+        this.y =
+            H / 2;
+
+        this.delay =
+            delay;
+
+        this.size =
+            size;
+
+        this.alpha = 0;
+
+        this.color =
+            Math.random() < 0.52
+            ? BLUE[
+                Math.floor(
+                    Math.random() *
+                    BLUE.length
+                )
+            ]
+            : GOLD[
+                Math.floor(
+                    Math.random() *
+                    GOLD.length
+                )
+            ];
+
+        this.phase =
+            Math.random() *
+            Math.PI * 2;
+
+        this.speed =
+            0.035 +
+            Math.random() * 0.025;
+
+        this.rotation =
+            Math.random() *
+            Math.PI * 2;
+    }
+
+
+    reset() {
+
+        this.x =
+            W / 2;
+
+        this.y =
+            H / 2;
+
+        this.alpha = 0;
+    }
+
+
+    update(cycleFrame) {
+
+        // -----------------------------
+        // FORMING
+        // -----------------------------
+
+        if (
+            cycleFrame >= this.delay &&
+            cycleFrame < FORM_TIME
+        ) {
+
+            this.alpha += 0.045;
+
+            if (this.alpha > 1)
+                this.alpha = 1;
+
+
+            // Move toward target
+            this.x +=
+                (this.targetX - this.x)
+                * this.speed;
+
+            this.y +=
+                (this.targetY - this.y)
+                * this.speed;
+        }
+
+
+        // -----------------------------
+        // COMPLETELY FORMED
+        // -----------------------------
+
+        else if (
+            cycleFrame >= FORM_TIME &&
+            cycleFrame < FORM_TIME + HOLD_TIME
+        ) {
+
+            this.alpha = 1;
+
+            // Tiny movement while glowing
+            this.x +=
+                (this.targetX - this.x)
+                * 0.015;
+
+            this.y +=
+                (this.targetY - this.y)
+                * 0.015;
+        }
+
+
+        // -----------------------------
+        // VANISH
+        // -----------------------------
+
+        else if (
+            cycleFrame >=
+            FORM_TIME + HOLD_TIME
+        ) {
+
+            const fadeProgress =
+                (
+                    cycleFrame -
+                    FORM_TIME -
+                    HOLD_TIME
+                ) / FADE_TIME;
+
+            this.alpha =
+                1 - fadeProgress;
+
+            if (this.alpha < 0)
+                this.alpha = 0;
+        }
+    }
+
+
+    draw(cycleFrame) {
+
+        if (this.alpha <= 0)
+            return;
+
+
+        // Flickering brightness
+        const flicker =
+            0.75 +
+            Math.sin(
+                time * 0.07 +
+                this.phase
+            ) * 0.25;
+
+
+        const finalAlpha =
+            this.alpha *
+            flicker;
+
+
+        ctx.save();
+
+        ctx.globalAlpha =
+            finalAlpha;
+
+
+        // --------------------------------
+        // LARGE GLOW
+        // --------------------------------
+
+        ctx.shadowBlur = 25;
+        ctx.shadowColor =
+            this.color;
+
+        ctx.fillStyle =
+            this.color;
+
+
+        ctx.beginPath();
+
+        ctx.arc(
+            this.x,
+            this.y,
+            this.size,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+
+
+        // --------------------------------
+        // BRIGHT CORE
+        // --------------------------------
+
+        ctx.shadowBlur = 7;
+
+        ctx.fillStyle =
+            "#ffffff";
+
+        ctx.globalAlpha =
+            finalAlpha * 0.85;
+
+
+        ctx.beginPath();
+
+        ctx.arc(
+            this.x,
+            this.y,
+            this.size * 0.35,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+
+
+        ctx.restore();
+    }
+}
+
+
+// =====================================================
+// CREATE HEART
+// =====================================================
+
+function createHeart() {
+
+    particles = [];
+
+
+    // -------------------------------------------------
+    // SCALE
+    // -------------------------------------------------
+
+    // Bigger overall heart
+    const baseScale =
+        Math.min(W, H) / 34;
+
+
+    // THIS MAKES IT WIDER
+    const widthScale = 1.32;
+
+    // Slightly shorter vertically
+    const heightScale = 0.96;
+
+
+    // -------------------------------------------------
+    // OUTLINE
+    // -------------------------------------------------
+
+    for (
+        let i = 0;
+        i < OUTLINE_COUNT;
+        i++
+    ) {
+
+        const t =
+            (i / OUTLINE_COUNT) *
+            Math.PI * 2;
+
+
+        const h =
+            heart(t);
+
+
+        const x =
+            W / 2 +
+            h.x *
+            baseScale *
+            widthScale;
+
+
+        const y =
+            H / 2 +
+            h.y *
+            baseScale *
+            heightScale;
+
+
+        particles.push(
+            new Particle(
+                x,
+                y,
+
+                // Sequential formation
+                i * (
+                    FORM_TIME /
+                    OUTLINE_COUNT
+                ),
+
+                // Different dot sizes
+                1.1 +
+                Math.random() * 2.3
+            )
+        );
+    }
+
+
+    // -------------------------------------------------
+    // INSIDE PARTICLES
+    // -------------------------------------------------
+
+    for (
+        let i = 0;
+        i < INSIDE_COUNT;
+        i++
+    ) {
+
+        const t =
+            Math.random() *
+            Math.PI * 2;
+
+
+        // sqrt gives better distribution
+        const r =
+            Math.sqrt(
+                Math.random()
+            ) * 0.86;
+
+
+        const h =
+            heart(t);
+
+
+        const x =
+            W / 2 +
+            h.x *
+            baseScale *
+            widthScale *
+            r;
+
+
+        const y =
+            H / 2 +
+            h.y *
+            baseScale *
+            heightScale *
+            r;
+
+
+        particles.push(
+            new Particle(
+
+                x,
+                y,
+
+                // Inside particles appear
+                // after the outline starts
+                35 +
+                Math.random() *
+                (FORM_TIME - 35),
+
+                0.9 +
+                Math.random() * 2.5
+            )
+        );
+    }
+}
+
+
+// =====================================================
+// ANIMATION
+// =====================================================
+
+function animate() {
+
+    time++;
+
+
+    // Current position inside cycle
+    const cycleFrame =
+        time % CYCLE_TIME;
+
+
+    // -------------------------------
+    // BLACK BACKGROUND
+    // -------------------------------
+
+    ctx.fillStyle =
+        "black";
+
+    ctx.fillRect(
+        0,
+        0,
+        W,
+        H
+    );
+
+
+    // -------------------------------
+    // PARTICLES
+    // -------------------------------
+
+    for (
+        const particle of particles
+    ) {
+
+        particle.update(
+            cycleFrame
+        );
+
+        particle.draw(
+            cycleFrame
+        );
+    }
+
+
+    // -------------------------------
+    // NEW CYCLE
+    // -------------------------------
+
+    if (cycleFrame < 2) {
+
+        for (
+            const particle of particles
+        ) {
+
+            particle.reset();
+
+        }
+    }
+
+
+    requestAnimationFrame(
+        animate
+    );
+}
+
+
+// =====================================================
+// START
+// =====================================================
+
+resize();
+animate();
+
+</script>
+
+</body>
+</html>
